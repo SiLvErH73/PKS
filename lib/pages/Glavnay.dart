@@ -1,35 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'tovar.dart';
+import 'addbtn.dart';
 
 class ContentView extends StatefulWidget {
-  const ContentView({Key? key}) : super(key: key);
-
   @override
   _ContentViewState createState() => _ContentViewState();
 }
 
 class _ContentViewState extends State<ContentView> {
-
   List<Map<String, dynamic>> lenta = [];
 
   @override
   void initState() {
     super.initState();
-    _initializeFirebase();
+    _fetchData();
   }
 
-  // Для Fire
-  Future<void> _initializeFirebase() async {
-    try {
-      await Firebase.initializeApp();
-      _fetchData(); // Fetch data from Firestore after initialization
-    } catch (e) {
-      print('Error initializing Firebase: $e');
-    }
-  }
-
-  // Загрузка из Fire
+  // Загрузка данных из Firestore
   Future<void> _fetchData() async {
     try {
       var querySnapshot = await FirebaseFirestore.instance.collection('post').get();
@@ -39,6 +27,7 @@ class _ContentViewState extends State<ContentView> {
           'id': doc.id,
           'title': doc['title'],
           'text': doc['text'],
+          'imageUrl': doc.data().containsKey('imageUrl') ? doc['imageUrl'] : '',
         });
       }
       setState(() {
@@ -49,95 +38,7 @@ class _ContentViewState extends State<ContentView> {
     }
   }
 
-  // Добаление и обновление
-  void _showEditDialog({String? initialTitle, String? initialText, int? index}) {
-    String title = initialTitle ?? '';
-    String text = initialText ?? '';
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(index == null ? "Добавить запись" : "Редактировать запись"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: InputDecoration(labelText: 'Заголовок'),
-                onChanged: (value) {
-                  title = value;
-                },
-                controller: TextEditingController(text: initialTitle),
-              ),
-              SizedBox(height: 10),
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'Текст',
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: 12.0,
-                    horizontal: 16.0,
-                  ),
-                ),
-                onChanged: (value) {
-                  text = value;
-                },
-                controller: TextEditingController(text: initialText),
-                maxLines: null, // Многострочный ввод
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text("Отмена"),
-            ),
-
-
-            ElevatedButton(
-              onPressed: () async {
-                if (title.isNotEmpty && text.isNotEmpty) {
-                  try {
-                    if (index == null) {
-                      // Добавляем новую запись
-                      var newDoc = await FirebaseFirestore.instance.collection('post').add({
-                        'title': title,
-                        'text': text,
-                      });
-                      setState(() {
-                        lenta.add({
-                          'id': newDoc.id,
-                          'title': title,
-                          'text': text,
-                        });
-                      });
-                    } else {
-                      // Обновляем существующую запись
-                      await FirebaseFirestore.instance.collection('post').doc(lenta[index]['id']).update({
-                        'title': title,
-                        'text': text,
-                      });
-                      setState(() {
-                        lenta[index] = {'id': lenta[index]['id'], 'title': title, 'text': text};
-                      });
-                    }
-                    Navigator.of(context).pop();
-                  } catch (e) {
-                    print('Error saving data: $e');
-                  }
-                }
-              },
-              child: Text("Сохранить"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // удаления записи
+  // Удаление записи
   void _deletePost(int index) async {
     try {
       String docId = lenta[index]['id'];
@@ -150,54 +51,95 @@ class _ContentViewState extends State<ContentView> {
     }
   }
 
-// База
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(" Мои записи"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: Text("Мои записи"), centerTitle: true),
       body: lenta.isEmpty
           ? Center(child: CircularProgressIndicator())
-          : ListView.builder(
+          : GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10.0,
+          mainAxisSpacing: 10.0,
+          childAspectRatio: 3 / 4,
+        ),
+        padding: EdgeInsets.all(10.0),
         itemCount: lenta.length,
-        itemBuilder: (BuildContext context, int index) {
+        itemBuilder: (context, index) {
           return Dismissible(
             key: Key(lenta[index]['id']),
             background: Container(color: Colors.deepOrangeAccent),
-            onDismissed: (direction) {
-              _deletePost(index);
-            },
-            child: Card(
-              child: ListTile(
-                title: Text(lenta[index]['title']),
-                subtitle: Text(lenta[index]['text']),
-                trailing: IconButton(
-                  icon: Icon(Icons.edit),
-                  onPressed: () {
-                    _showEditDialog(
-                      initialTitle: lenta[index]['title'],
-                      initialText: lenta[index]['text'],
-                      index: index,
-                    );
-                  },
+            onDismissed: (_) => _deletePost(index),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailsPage(item: lenta[index]),
+                ),
+              ),
+              child: Card(
+                child: Column(
+                  children: [
+                    if (lenta[index]['imageUrl'].isNotEmpty)
+                      Image.network(
+                        lenta[index]['imageUrl'],
+                        height: 120,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            lenta[index]['title'],
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            lenta[index]['text'],
+                            style: TextStyle(fontSize: 14),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () => showEditDialog(
+                        context: context,
+                        item: lenta[index],
+                        onSave: (updatedItem) {
+                          setState(() {
+                            lenta[index] = updatedItem;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           );
         },
       ),
-
-      floatingActionButton: FloatingActionButton( //Кнопка
+      floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.deepOrangeAccent,
-        onPressed: () {
-          _showEditDialog();
-        },
-        child: Icon(
-          Icons.add_box,
-          color: Colors.white,
+        onPressed: () => showEditDialog(
+          context: context,
+          onSave: (newItem) {
+            setState(() {
+              lenta.add(newItem);
+            });
+          },
         ),
+        child: Icon(Icons.add_box, color: Colors.white),
       ),
     );
   }

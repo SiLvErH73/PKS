@@ -18,6 +18,7 @@ void Fire() async{
 void main() {
   Fire();
   runApp(MyApp());
+
 }
 
 class MyApp extends StatelessWidget {
